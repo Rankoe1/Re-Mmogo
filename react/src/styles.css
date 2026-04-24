@@ -1,0 +1,80 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: sans-serif;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  text-align: left;
+}
+
+form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.app-shell,
+.public-page {
+  padding: 1rem;
+}
+
+.app-header,
+.app-nav,
+.action-row,
+.two-column,
+.grid {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.app-header,
+.app-nav {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-main,
+.card,
+.report-block {
+  margin-top: 1rem;
+}
+
+.two-column > * {
+  flex: 1 1 320px;
+}
+
+.grid > * {
+  flex: 1 1 220px;
+}
+
+.message.error {
+  color: #a40000;
+}
+
+.message.success {
+  color: #0b6b20;
+}
