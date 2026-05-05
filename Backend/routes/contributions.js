@@ -13,6 +13,7 @@ const createContributionValidation = [
   body('payment_date').optional().isDate()
 ];
 
+router.get('/', authenticateToken, contributionController.getAllContributions);
 router.post('/:groupId/contributions', authenticateToken, upload.single('proof'), createContributionValidation, contributionController.createContribution);
 router.get('/:groupId/contributions', authenticateToken, requireGroupAccess, contributionController.getGroupContributions);
 router.get('/:groupId/contributions/pending', authenticateToken, requireSignatory, contributionController.getPendingContributions);

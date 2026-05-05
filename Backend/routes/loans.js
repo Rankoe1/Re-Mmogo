@@ -15,6 +15,7 @@ const paymentValidation = [
   body('amount').isFloat({ min: 0 }).withMessage('Payment amount must be positive')
 ];
 
+router.get('/', authenticateToken, loanController.getAllLoans);
 router.post('/:groupId/loans', authenticateToken, createLoanValidation, loanController.applyForLoan);
 router.get('/:groupId/loans', authenticateToken, requireGroupAccess, loanController.getGroupLoans);
 router.get('/:groupId/loans/pending', authenticateToken, requireSignatory, loanController.getPendingLoans);

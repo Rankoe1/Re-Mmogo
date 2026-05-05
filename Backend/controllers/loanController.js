@@ -13,27 +13,27 @@ exports.applyForLoan = async (req, res) => {
     const { principal_amount, notes } = req.body;
     const groupId = req.params.groupId;
     const memberId = req.user.id;
-    
+
     // Check if member has sufficient contributions
     const contributions = await db.get(
       `SELECT SUM(amount) as total FROM contributions 
        WHERE member_id = ? AND group_id = ? AND status = 'approved'`,
       [memberId, groupId]
     );
-    
+
     // Basic rule: Loan cannot exceed total contributions (optional rule)
     if ((contributions.total || 0) < principal_amount * 0.5) {
       return res.status(400).json({ error: 'Loan amount too high relative to contributions' });
     }
-    
+
     const interestRate = 20; // 20% monthly interest as per requirements
-    
+
     const result = await db.run(
       `INSERT INTO loans (group_id, member_id, principal_amount, balance, interest_rate, notes, status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [groupId, memberId, principal_amount, principal_amount, interestRate, notes || null, 'pending']
     );
-    
+
     res.status(201).json({
       message: 'Loan application submitted, pending approval',
       loan_id: result.lastID
@@ -49,7 +49,7 @@ exports.getGroupLoans = async (req, res) => {
     const db = getDb();
     const groupId = req.params.groupId;
     const { status } = req.query;
-    
+
     let query = `
       SELECT l.*, u.full_name as member_name, gm.member_number,
              s1.full_name as signatory1_name,
@@ -62,14 +62,14 @@ exports.getGroupLoans = async (req, res) => {
       WHERE l.group_id = ?
     `;
     let params = [groupId];
-    
+
     if (status) {
       query += ` AND l.status = ?`;
       params.push(status);
     }
-    
+
     query += ` ORDER BY l.application_date DESC`;
-    
+
     const loans = await db.all(query, params);
     res.json(loans);
   } catch (error) {
@@ -82,7 +82,7 @@ exports.getPendingLoans = async (req, res) => {
   try {
     const db = getDb();
     const groupId = req.params.groupId;
-    
+
     const pending = await db.all(
       `SELECT l.*, u.full_name as member_name, gm.member_number
        FROM loans l
@@ -92,7 +92,7 @@ exports.getPendingLoans = async (req, res) => {
        ORDER BY l.application_date ASC`,
       [groupId]
     );
-    
+
     res.json(pending);
   } catch (error) {
     console.error('Get pending loans error:', error);
@@ -104,36 +104,36 @@ exports.approveLoan = async (req, res) => {
   try {
     const db = getDb();
     const { loanId, groupId } = req.params;
-    
+
     const loan = await db.get(
       'SELECT * FROM loans WHERE id = ? AND group_id = ?',
       [loanId, groupId]
     );
-    
+
     if (!loan) {
       return res.status(404).json({ error: 'Loan not found' });
     }
-    
+
     if (loan.status !== 'pending') {
       return res.status(400).json({ error: 'Loan already processed' });
     }
-    
+
     // Check which signatory is approving
     const signatoryNumber = loan.approved_by_signatory1 ? 2 : 1;
-    
+
     if (signatoryNumber === 1) {
       await db.run(
         'UPDATE loans SET approved_by_signatory1 = ? WHERE id = ?',
         [req.user.id, loanId]
       );
-      
+
       res.json({ message: 'First approval completed. Waiting for second signatory.' });
     } else {
       await db.run(
         'UPDATE loans SET approved_by_signatory2 = ?, approval_date = CURRENT_DATE, status = "approved" WHERE id = ?',
         [req.user.id, loanId]
       );
-      
+
       res.json({ message: 'Loan fully approved and ready for disbursement' });
     }
   } catch (error) {
@@ -146,23 +146,23 @@ exports.disburseLoan = async (req, res) => {
   try {
     const db = getDb();
     const { loanId, groupId } = req.params;
-    
+
     const loan = await db.get(
       'SELECT * FROM loans WHERE id = ? AND group_id = ? AND status = "approved"',
       [loanId, groupId]
     );
-    
+
     if (!loan) {
       return res.status(404).json({ error: 'Loan not found or not approved' });
     }
-    
+
     await db.run(
       `UPDATE loans 
        SET status = 'active', disbursement_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [loanId]
     );
-    
+
     res.json({ message: 'Loan disbursed successfully' });
   } catch (error) {
     console.error('Disburse loan error:', error);
@@ -181,36 +181,36 @@ exports.makeLoanPayment = async (req, res) => {
     const { amount, notes } = req.body;
     const { loanId, groupId } = req.params;
     const memberId = req.user.id;
-    
+
     const loan = await db.get(
       'SELECT * FROM loans WHERE id = ? AND member_id = ? AND status = "active"',
       [loanId, memberId]
     );
-    
+
     if (!loan) {
       return res.status(404).json({ error: 'Active loan not found' });
     }
-    
+
     // Calculate interest and principal portions
     const monthlyInterest = (loan.balance * loan.interest_rate) / 100;
     let interestPaid = Math.min(amount, monthlyInterest);
     let principalPaid = amount - interestPaid;
-    
+
     if (principalPaid > loan.balance) {
       principalPaid = loan.balance;
       interestPaid = amount - principalPaid;
     }
-    
+
     const proofPath = req.file ? `/uploads/${req.file.filename}` : null;
-    
+
     const result = await db.run(
       `INSERT INTO loan_payments (loan_id, member_id, amount, interest_paid, principal_paid, 
                                   payment_date, proof_of_payment, notes, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [loanId, memberId, amount, interestPaid, principalPaid, new Date().toISOString().split('T')[0], 
-       proofPath, notes || null, 'pending']
+      [loanId, memberId, amount, interestPaid, principalPaid, new Date().toISOString().split('T')[0],
+        proofPath, notes || null, 'pending']
     );
-    
+
     res.status(201).json({
       message: 'Payment recorded, pending approval',
       payment_id: result.lastID,
@@ -230,7 +230,7 @@ exports.getLoanPayments = async (req, res) => {
   try {
     const db = getDb();
     const { loanId, groupId } = req.params;
-    
+
     const payments = await db.all(
       `SELECT lp.*, u.full_name as approved_by_name
        FROM loan_payments lp
@@ -239,7 +239,7 @@ exports.getLoanPayments = async (req, res) => {
        ORDER BY lp.payment_date DESC`,
       [loanId]
     );
-    
+
     const summary = await db.get(
       `SELECT 
         SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END) as total_paid,
@@ -250,7 +250,7 @@ exports.getLoanPayments = async (req, res) => {
        WHERE loan_id = ?`,
       [loanId]
     );
-    
+
     res.json({ payments, summary });
   } catch (error) {
     console.error('Get payments error:', error);
@@ -262,7 +262,7 @@ exports.approveLoanPayment = async (req, res) => {
   try {
     const db = getDb();
     const { paymentId, groupId } = req.params;
-    
+
     const payment = await db.get(
       `SELECT lp.*, l.member_id, l.balance as loan_balance, l.id as loan_id
        FROM loan_payments lp
@@ -270,11 +270,11 @@ exports.approveLoanPayment = async (req, res) => {
        WHERE lp.id = ? AND lp.status = 'pending'`,
       [paymentId]
     );
-    
+
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found or already processed' });
     }
-    
+
     // Approve payment
     await db.run(
       `UPDATE loan_payments 
@@ -282,10 +282,10 @@ exports.approveLoanPayment = async (req, res) => {
        WHERE id = ?`,
       [req.user.id, paymentId]
     );
-    
+
     // Update loan balance
     const newBalance = payment.loan_balance - payment.principal_paid;
-    
+
     await db.run(
       `UPDATE loans 
        SET balance = ?, total_paid = total_paid + ?, 
@@ -294,7 +294,7 @@ exports.approveLoanPayment = async (req, res) => {
        WHERE id = ?`,
       [newBalance, payment.amount, newBalance, payment.loan_id]
     );
-    
+
     // Update member's interest earned for reports
     if (payment.interest_paid > 0) {
       await db.run(
@@ -304,10 +304,41 @@ exports.approveLoanPayment = async (req, res) => {
         [payment.interest_paid, payment.member_id, groupId]
       );
     }
-    
+
     res.json({ message: 'Payment approved successfully' });
   } catch (error) {
     console.error('Approve payment error:', error);
     res.status(500).json({ error: 'Error approving payment' });
   }
+  exports.getAllLoans = async (req, res) => {
+    try {
+      const db = getDb();
+      let loans;
+
+      if (req.user.role === 'admin') {
+        loans = await db.all(
+          `SELECT l.*, u.full_name, u.email, g.name as group_name
+         FROM loans l
+         JOIN users u ON l.member_id = u.id
+         JOIN groups g ON l.group_id = g.id
+         ORDER BY l.application_date DESC`
+        );
+      } else {
+        loans = await db.all(
+          `SELECT l.*, u.full_name, u.email, g.name as group_name
+         FROM loans l
+         JOIN users u ON l.member_id = u.id
+         JOIN groups g ON l.group_id = g.id
+         WHERE l.group_id = ?
+         ORDER BY l.application_date DESC`,
+          [req.user.group_id]
+        );
+      }
+
+      res.json(loans);
+    } catch (error) {
+      console.error('Get all loans error:', error);
+      res.status(500).json({ error: 'Error fetching loans' });
+    }
+  };
 };

@@ -11,6 +11,7 @@ const addMemberValidation = [
   body('is_signatory').optional().isBoolean()
 ];
 
+router.get('/', authenticateToken, memberController.getAllMembers);
 router.post('/:groupId/members', authenticateToken, requireSignatory, addMemberValidation, memberController.addMember);
 router.put('/:groupId/members/:memberId', authenticateToken, requireSignatory, memberController.updateMember);
 router.delete('/:groupId/members/:memberId', authenticateToken, requireSignatory, memberController.removeMember);
