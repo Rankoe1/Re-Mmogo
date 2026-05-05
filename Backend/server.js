@@ -9,7 +9,7 @@ const app = express();
 
 // Basic middleware
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: ['http://localhost:5173', 'https://re-mmogo.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
