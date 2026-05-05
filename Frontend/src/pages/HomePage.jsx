@@ -7,7 +7,7 @@ class HomePage extends Component {
       <main className="public-page">
         <h1>Re-Mmogo WebApp</h1>
         <p>
-          A simple frontend for managing motshelo groups, members, loans,
+          A simple WebApp for managing motshelo groups, members, loans,
           contributions, balances, and reports.
         </p>
         <div className="action-row">
