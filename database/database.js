@@ -1,4 +1,3 @@
-// this is the main file that sets up the database connection and intitializes everything
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
@@ -15,17 +14,17 @@ const initializeDatabase = async () => {
   // Enable foreign keys
   await db.run('PRAGMA foreign_keys = ON');
 
-  // Create tables
+  // Create all tables
   await createTables();
   
-  // Insert default admin user if not exists
+  // Insert default data
   await seedDefaultData();
 
   return db;
 };
 
 const createTables = async () => {
-  // Users table
+  // Users table - stores all user accounts
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,12 +35,11 @@ const createTables = async () => {
       is_signatory BOOLEAN DEFAULT 0,
       group_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-  // Groups table
+  // Groups table - stores motshelo groups
   await db.exec(`
     CREATE TABLE IF NOT EXISTS groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,13 +56,13 @@ const createTables = async () => {
     )
   `);
 
-  // Group members table
+  // Group Members table - Links users to groups
   await db.exec(`
     CREATE TABLE IF NOT EXISTS group_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       group_id INTEGER NOT NULL,
       user_id INTEGER NOT NULL,
-      member_number VARCHAR(50),
+      member_number VARCHAR(50) UNIQUE,
       join_date DATE DEFAULT CURRENT_DATE,
       status VARCHAR(50) DEFAULT 'active',
       total_contributions DECIMAL(10,2) DEFAULT 0,
@@ -76,7 +74,7 @@ const createTables = async () => {
     )
   `);
 
-  // Contributions table
+  // Contributions table - records monthly contributions
   await db.exec(`
     CREATE TABLE IF NOT EXISTS contributions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +96,7 @@ const createTables = async () => {
     )
   `);
 
-  // Loans table
+  // Loans table - records loan applications
   await db.exec(`
     CREATE TABLE IF NOT EXISTS loans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,7 +123,7 @@ const createTables = async () => {
     )
   `);
 
-  // Loan payments table
+  // Loan payments table - records loan repayments
   await db.exec(`
     CREATE TABLE IF NOT EXISTS loan_payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,7 +145,7 @@ const createTables = async () => {
     )
   `);
 
-  // Audit logs table
+  // Audit logs table - tracks all actions
   await db.exec(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +160,14 @@ const createTables = async () => {
     )
   `);
 
-  console.log('Database tables created successfully');
+  console.log('All database tables created successfully');
+  console.log('- users table: stores user accounts');
+  console.log('- groups table: stores motshelo groups');
+  console.log('- group_members table: links users to groups (CRITICAL)');
+  console.log('- contributions table: records monthly payments');
+  console.log('- loans table: stores loan applications');
+  console.log('- loan_payments table: tracks repayments');
+  console.log('- audit_logs table: tracks user actions');
 };
 
 const seedDefaultData = async () => {
@@ -182,11 +187,24 @@ const seedDefaultData = async () => {
   const groupExists = await db.get('SELECT id FROM groups LIMIT 1');
   if (!groupExists) {
     const adminUser = await db.get('SELECT id FROM users WHERE email = ?', ['admin@remmogo.com']);
-    await db.run(
+    
+    // Create demo group
+    const result = await db.run(
       'INSERT INTO groups (name, registration_number, description, created_by) VALUES (?, ?, ?, ?)',
       ['Demo Motshelo Group', 'REG001', 'Demo group for testing purposes', adminUser.id]
     );
-    console.log('Demo group created');
+    
+    // Add admin as a member of the group
+    await db.run(
+      `INSERT INTO group_members (group_id, user_id, member_number, status)
+       VALUES (?, ?, ?, ?)`,
+      [result.lastID, adminUser.id, 'MEM001', 'active']
+    );
+    
+    // Update user's group_id
+    await db.run('UPDATE users SET group_id = ? WHERE id = ?', [result.lastID, adminUser.id]);
+    
+    console.log('Demo group created with admin as member');
   }
 };
 

@@ -2,6 +2,7 @@
 const { validationResult } = require('express-validator');
 const { getDb } = require('../database/database');
 const User = require('../models/User');
+const Member = require('../models/Member');
 const bcrypt = require('bcryptjs');
 
 exports.addMember = async (req, res) => {
@@ -13,7 +14,7 @@ exports.addMember = async (req, res) => {
   try {
     const db = getDb();
     const { email, full_name, is_signatory } = req.body;
-    const groupId = req.params.groupId;
+    const groupId = parseInt(req.params.groupId);
     
     // Check if group exists
     const group = await db.get('SELECT id FROM groups WHERE id = ?', [groupId]);
@@ -32,65 +33,60 @@ exports.addMember = async (req, res) => {
       const result = await db.run(
         `INSERT INTO users (email, password, full_name, is_signatory, group_id)
          VALUES (?, ?, ?, ?, ?)`,
-        [email, hashedPassword, full_name, is_signatory || 0, groupId]
+        [email, hashedPassword, full_name, is_signatory ? 1 : 0, groupId]
       );
       
       user = { id: result.lastID };
     } else {
-      // Update existing user's group
-      await db.run('UPDATE users SET group_id = ?, is_signatory = ? WHERE id = ?', 
-        [groupId, is_signatory || 0, user.id]);
+      // Update existing user's group and signatory status
+      await db.run(
+        'UPDATE users SET group_id = ?, is_signatory = ? WHERE id = ?', 
+        [groupId, is_signatory ? 1 : 0, user.id]
+      );
     }
     
-    // Check if already a member
-    const existingMember = await db.get(
-      'SELECT id FROM group_members WHERE group_id = ? AND user_id = ?',
-      [groupId, user.id]
-    );
+    // Add to group members using the Member model
+    const member = await Member.addToGroup(groupId, user.id);
     
-    if (existingMember) {
-      return res.status(400).json({ error: 'User is already a member of this group' });
-    }
-    
-    // Get member count for member number
-    const memberCount = await db.get('SELECT COUNT(*) as count FROM group_members WHERE group_id = ?', [groupId]);
-    const memberNumber = `MEM${groupId}${(memberCount.count + 1).toString().padStart(3, '0')}`;
-    
-    // Add to group members
-    await db.run(
-      `INSERT INTO group_members (group_id, user_id, member_number, status)
-       VALUES (?, ?, ?, ?)`,
-      [groupId, user.id, memberNumber, 'active']
-    );
+    // Get the complete member details
+    const memberDetails = await Member.getMemberById(groupId, user.id);
     
     res.status(201).json({
       message: 'Member added successfully',
-      member: {
-        user_id: user.id,
-        email,
-        full_name,
-        member_number: memberNumber,
-        is_signatory: is_signatory || 0
-      }
+      member: memberDetails
     });
   } catch (error) {
     console.error('Add member error:', error);
-    res.status(500).json({ error: 'Error adding member' });
+    res.status(500).json({ error: error.message || 'Error adding member' });
   }
 };
 
 exports.updateMember = async (req, res) => {
   try {
+    const groupId = parseInt(req.params.groupId);
+    const memberId = parseInt(req.params.memberId);
+    const { full_name, is_signatory, status } = req.body;
+    
     const db = getDb();
-    const { memberId } = req.params;
-    const { full_name, is_signatory } = req.body;
     
-    await db.run(
-      'UPDATE users SET full_name = ?, is_signatory = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [full_name, is_signatory || 0, memberId]
-    );
+    // Update user info
+    if (full_name) {
+      await db.run(
+        'UPDATE users SET full_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [full_name, memberId]
+      );
+    }
     
-    res.json({ message: 'Member updated successfully' });
+    // Update member info
+    const updatedMember = await Member.updateMember(groupId, memberId, {
+      is_signatory,
+      status
+    });
+    
+    res.json({
+      message: 'Member updated successfully',
+      member: updatedMember
+    });
   } catch (error) {
     console.error('Update member error:', error);
     res.status(500).json({ error: 'Error updating member' });
@@ -99,61 +95,78 @@ exports.updateMember = async (req, res) => {
 
 exports.removeMember = async (req, res) => {
   try {
-    const db = getDb();
-    const { memberId, groupId } = req.params;
+    const groupId = parseInt(req.params.groupId);
+    const memberId = parseInt(req.params.memberId);
     
-    // Check if member has any outstanding loans
-    const outstandingLoans = await db.get(
-      'SELECT COUNT(*) as count FROM loans WHERE member_id = ? AND status IN ("active", "pending")',
-      [memberId]
-    );
-    
-    if (outstandingLoans.count > 0) {
-      return res.status(400).json({ error: 'Cannot remove member with outstanding loans' });
-    }
-    
-    // Update group_members status to inactive
-    await db.run(
-      'UPDATE group_members SET status = "inactive" WHERE group_id = ? AND user_id = ?',
-      [groupId, memberId]
-    );
-    
-    // Update user's group_id
-    await db.run('UPDATE users SET group_id = NULL WHERE id = ?', [memberId]);
+    await Member.removeFromGroup(groupId, memberId);
     
     res.json({ message: 'Member removed successfully' });
   } catch (error) {
     console.error('Remove member error:', error);
-    res.status(500).json({ error: 'Error removing member' });
+    res.status(500).json({ error: error.message || 'Error removing member' });
   }
 };
 
 exports.updateMemberStatus = async (req, res) => {
   try {
-    const db = getDb();
-    const { memberId, groupId } = req.params;
+    const groupId = parseInt(req.params.groupId);
+    const memberId = parseInt(req.params.memberId);
     const { status } = req.body;
     
     if (!['active', 'inactive', 'suspended'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
     
-    await db.run(
-      'UPDATE group_members SET status = ? WHERE group_id = ? AND user_id = ?',
-      [status, groupId, memberId]
-    );
+    const updatedMember = await Member.updateMember(groupId, memberId, { status });
     
-    res.json({ message: `Member status updated to ${status}` });
+    res.json({
+      message: `Member status updated to ${status}`,
+      member: updatedMember
+    });
   } catch (error) {
     console.error('Update status error:', error);
     res.status(500).json({ error: 'Error updating member status' });
   }
 };
 
+exports.getGroupMembers = async (req, res) => {
+  try {
+    const groupId = parseInt(req.params.groupId);
+    
+    const members = await Member.getGroupMembers(groupId);
+    
+    res.json(members);
+  } catch (error) {
+    console.error('Get members error:', error);
+    res.status(500).json({ error: 'Error fetching members' });
+  }
+};
+
+exports.getMemberById = async (req, res) => {
+  try {
+    const groupId = parseInt(req.params.groupId);
+    const memberId = parseInt(req.params.memberId);
+    
+    const member = await Member.getMemberById(groupId, memberId);
+    
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    
+    const stats = await Member.getMemberStats(groupId, memberId);
+    
+    res.json({ ...member, stats });
+  } catch (error) {
+    console.error('Get member error:', error);
+    res.status(500).json({ error: 'Error fetching member' });
+  }
+};
+
 exports.getMemberContributions = async (req, res) => {
   try {
     const db = getDb();
-    const { memberId, groupId } = req.params;
+    const groupId = parseInt(req.params.groupId);
+    const memberId = parseInt(req.params.memberId);
     
     const contributions = await db.all(
       `SELECT * FROM contributions 
@@ -182,7 +195,8 @@ exports.getMemberContributions = async (req, res) => {
 exports.getMemberLoans = async (req, res) => {
   try {
     const db = getDb();
-    const { memberId, groupId } = req.params;
+    const groupId = parseInt(req.params.groupId);
+    const memberId = parseInt(req.params.memberId);
     
     const loans = await db.all(
       `SELECT l.*, 
@@ -200,56 +214,5 @@ exports.getMemberLoans = async (req, res) => {
   } catch (error) {
     console.error('Get loans error:', error);
     res.status(500).json({ error: 'Error fetching loans' });
-  }
-};
-
-exports.getMemberStatement = async (req, res) => {
-  try {
-    const db = getDb();
-    const { memberId, groupId } = req.params;
-    const { year } = req.query;
-    
-    let query = `
-      SELECT 'contribution' as type, id, amount, payment_date as date, status, notes, NULL as loan_id
-      FROM contributions
-      WHERE member_id = ? AND group_id = ?
-    `;
-    let params = [memberId, groupId];
-    
-    if (year) {
-      query += ` AND year = ?`;
-      params.push(year);
-    }
-    
-    query += `
-      UNION ALL
-      SELECT 'loan_payment' as type, id, amount, payment_date as date, status, notes, loan_id
-      FROM loan_payments
-      WHERE member_id = ? AND group_id = ?
-    `;
-    params.push(memberId, groupId);
-    
-    if (year) {
-      query += ` AND strftime('%Y', payment_date) = ?`;
-      params.push(year);
-    }
-    
-    query += ` ORDER BY date DESC`;
-    
-    const statement = await db.all(query, params);
-    
-    // Get member info
-    const member = await db.get(
-      `SELECT u.full_name, u.email, gm.member_number, gm.total_contributions, gm.total_interest_earned
-       FROM users u
-       JOIN group_members gm ON u.id = gm.user_id
-       WHERE u.id = ? AND gm.group_id = ?`,
-      [memberId, groupId]
-    );
-    
-    res.json({ member, statement });
-  } catch (error) {
-    console.error('Get statement error:', error);
-    res.status(500).json({ error: 'Error fetching member statement' });
   }
 };
