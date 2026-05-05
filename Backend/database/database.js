@@ -56,6 +56,31 @@ const createTables = async () => {
     )
   `);
 
+  // Members table - stores member details (linked to users and groups)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
+      full_name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      phone_number VARCHAR(20),
+      member_number VARCHAR(50) UNIQUE,
+      join_date DATE DEFAULT CURRENT_DATE,
+      status VARCHAR(50) DEFAULT 'active',
+      total_contributions DECIMAL(10,2) DEFAULT 0,
+      total_interest_earned DECIMAL(10,2) DEFAULT 0,
+      address TEXT,
+      occupation VARCHAR(100),
+      id_number VARCHAR(50),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+      UNIQUE(email, group_id)
+    )
+  `);
+
   // Group Members table - Links users to groups
   await db.exec(`
     CREATE TABLE IF NOT EXISTS group_members (
