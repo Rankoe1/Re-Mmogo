@@ -14,7 +14,7 @@ services:
       - key: JWT_EXPIRE
         value: 7d
       - key: CORS_ORIGIN
-        value: http://localhost:5173
+        value: http://localhost:5173,https://re-mmogo-rho.vercel.app
       - key: DATABASE_PATH
         value: /var/data/re_mmogo.db
     disk:
