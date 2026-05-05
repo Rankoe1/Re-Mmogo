@@ -5,9 +5,9 @@ const AuthContext = createContext({
   isAuthenticated: false,
   user: null,
   token: null,
-  login: async () => {},
-  register: async () => {},
-  logout: () => {}
+  login: async () => { },
+  register: async () => { },
+  logout: () => { }
 });
 
 class AuthProvider extends Component {
@@ -32,7 +32,12 @@ class AuthProvider extends Component {
   };
 
   register = async (payload) => {
-    const session = await authService.register(payload);
+    const session = await authService.register({
+      full_name: payload.fullName,
+      email: payload.email,
+      password: payload.password,
+      role: payload.role
+    });
     this.setState({
       isAuthenticated: true,
       user: session.user,
