@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: re-mmogo-api
+    runtime: node
+    rootDir: Backend
+    buildCommand: npm ci
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: CORS_ORIGIN
+        value: http://localhost:5173
+      - key: DATABASE_PATH
+        value: /var/data/re_mmogo.db
+    disk:
+      name: re-mmogo-data
+      mountPath: /var/data
+      sizeGB: 1
